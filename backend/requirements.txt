@@ -1,0 +1,12 @@
+fastapi
+uvicorn
+python-binance
+sqlalchemy
+psycopg2-binary
+pandas
+numpy
+pydantic[email] # Add email validation dependency
+python-dotenv
+websockets
+PyJWT[crypto]
+cryptography
