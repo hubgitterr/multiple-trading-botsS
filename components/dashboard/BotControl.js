@@ -16,7 +16,8 @@ const fetcher = async (url) => {
   }
 };
 
-export default function BotControlPanel() {
+// Accept onEditClick prop from parent
+export default function BotControlPanel({ onEditClick, onBacktestClick }) { // Add onBacktestClick prop
   // Fetch bot configurations list
   const { data: botConfigs, error: configError, isLoading: isLoadingConfigs } = useSWR(
     '/bots/configs',
@@ -169,9 +170,43 @@ export default function BotControlPanel() {
                   </p>
                   <p className="text-xs text-gray-400 dark:text-gray-500">ID: {botData.id}</p>
                 </div>
-                <div className="ml-4 flex-shrink-0">
-                  {/* Show Stop button only if actually running */}
-                  {botData.is_running ? ( 
+                <div className="ml-4 flex-shrink-0 space-x-2"> {/* Added space-x-2 for button spacing */}
+                  {/* Edit Button */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      // Ensure onEditClick is a function before calling
+                      if (typeof onEditClick === 'function') {
+                        onEditClick(botData);
+                      } else {
+                        console.error("onEditClick is not a function!", onEditClick);
+                      }
+                    }}
+                    disabled={isLoadingAction} // Disable if another action is loading
+                    className="inline-flex items-center px-3 py-1.5 border border-gray-300 dark:border-gray-600 text-xs font-medium rounded-md shadow-sm text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50"
+                  >
+                    Edit
+                  </button>
+
+                  {/* Backtest Button */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      // Ensure onBacktestClick is a function before calling
+                      if (typeof onBacktestClick === 'function') {
+                        onBacktestClick(botData); // Pass the bot data
+                      } else {
+                        console.error("onBacktestClick is not a function!", onBacktestClick);
+                      }
+                    }}
+                    disabled={isLoadingAction} // Disable if another action is loading
+                    className="inline-flex items-center px-3 py-1.5 border border-gray-300 dark:border-gray-600 text-xs font-medium rounded-md shadow-sm text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50"
+                  >
+                    Backtest
+                  </button>
+
+                  {/* Start/Stop Button */}
+                  {botData.is_running ? (
                     <button
                       type="button"
                       onClick={() => handleStopBot(botData.id)}
@@ -184,13 +219,13 @@ export default function BotControlPanel() {
                     <button
                       type="button"
                       onClick={() => handleStartBot(botData.id)}
-                      disabled={isStartDisabled} 
+                      disabled={isStartDisabled}
                       className="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-md shadow-sm text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                        {isLoadingAction ? 'Starting...' : 'Start'}
                     </button>
                   )}
-                   {/* TODO: Add Edit/Delete buttons */}
+                   {/* TODO: Add Delete button */}
                 </div>
               </li>
             );

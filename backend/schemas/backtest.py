@@ -1,53 +1,39 @@
-# backend/schemas/backtest.py
-from pydantic import BaseModel, Field
-from typing import Optional, List, Dict, Any
-import uuid
-from datetime import datetime, date
+from pydantic import BaseModel
+from typing import List, Dict, Any, Optional
+from datetime import datetime
 
-# Schema for the backtest request
-class BacktestRequest(BaseModel):
-    config_id: uuid.UUID = Field(..., description="ID of the Bot Configuration to test")
-    start_date: date = Field(..., example="2023-01-01", description="Start date for historical data")
-    end_date: date = Field(..., example="2023-12-31", description="End date for historical data")
-    initial_capital: float = Field(..., gt=0, example=10000.0, description="Initial capital for simulation")
-    commission_percent: float = Field(default=0.1, ge=0, le=10, description="Commission fee per trade in percent")
+# --- Schemas moved from engine.py for better organization ---
 
-# Schema for individual trade details in results
-class BacktestTrade(BaseModel):
-    timestamp: datetime
-    order_id: str
-    type: str
-    side: str
-    price: float
+class KLine(BaseModel):
+    timestamp: int
+    open: float
+    high: float
+    low: float
+    close: float
+    volume: float
+
+class Trade(BaseModel):
+    entry_timestamp: int
+    exit_timestamp: Optional[int] = None
+    entry_price: float
+    exit_price: Optional[float] = None
     quantity: float
-    cost: float
-    commission: float
-    quote_balance: float
-    base_balance: float
+    pnl: Optional[float] = None
+    side: str # 'BUY' or 'SELL' for the entry trade, or 'CLOSE' for final mark-to-market
+    avg_entry_price: Optional[float] = None # Added for DCA/Grid avg price tracking
 
-# Schema for equity curve points
-class EquityPoint(BaseModel):
-    timestamp: datetime
-    value: float
+class BacktestResult(BaseModel):
+    metrics: Dict[str, Any]
+    trades: List[Trade]
+    equity_curve: List[Dict[str, Any]] # List of {'timestamp': int, 'equity': float}
 
-# Schema for the backtest results response
-class BacktestResults(BaseModel):
-    start_date: date
-    end_date: date
-    duration_days: int
+# --- New schema for the backtest request ---
+
+class BacktestRequest(BaseModel):
+    start_date: datetime
+    end_date: datetime
     initial_capital: float
-    final_portfolio_value: float
-    total_return_percent: float
-    total_trades: int
-    commission_paid: float
-    sharpe_ratio: Optional[float] = None # Placeholder
-    max_drawdown: Optional[float] = None # Placeholder
-    win_rate: Optional[float] = None # Placeholder
-    # Limit the number of trades/equity points returned in API response for performance
-    trades: List[BacktestTrade] = Field(..., max_items=1000) # Example limit
-    equity_curve: List[EquityPoint] = Field(..., max_items=2000) # Example limit
+    # timeframe: Optional[str] = None # Decided against adding timeframe here, should be derived from BotConfig
 
     class Config:
-         orm_mode = False # Results are dicts, not ORM models
-         # Pydantic v2 uses model_config instead of Config class
-         # model_config = { "from_attributes": False }
+        orm_mode = True # Keep or remove based on usage, might not be needed here

@@ -81,15 +81,15 @@ async def _create_and_run_bot(config_id: str, user_id: str, config_data: Dict, d
 
     # --- Fetch User's API Keys and Initialize Client ---
     user_uuid = uuid.UUID(user_id)
+    # Revert to fetching all keys and using the first one
     api_keys = crud_api_key.get_api_keys_by_user(db=db, user_id=user_uuid)
     if not api_keys:
         logger.error(f"No API keys found for user {user_id}. Cannot start bot {bot_id}.")
         return None
 
-    # TODO: Implement logic to select the correct key if multiple exist. Using the first one for now.
+    # Using the first key found as placeholder
     selected_key = api_keys[0]
     decrypted_secret = crud_api_key.get_decrypted_secret_key(db=db, user_id=user_uuid, api_key_public=selected_key.api_key_public)
-
     if not decrypted_secret:
         logger.error(f"Failed to decrypt secret key for API key {selected_key.api_key_public} (ID: {selected_key.id}). Cannot start bot {bot_id}.")
         return None
@@ -205,7 +205,7 @@ async def update_bot_configuration(
         db=db,
         config_id=config_id,
         user_id=user_id, # Already using user_id
-        update_data=update_data
+        update_data=update_data.dict(exclude_unset=True) # Convert Pydantic model to dict
     )
     
     if not updated_config:

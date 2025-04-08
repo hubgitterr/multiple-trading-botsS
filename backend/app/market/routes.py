@@ -11,7 +11,7 @@ from binance import Client as BinanceLibClient
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 router = APIRouter(
-    prefix="/market", # Prefix for all routes in this router
+    # prefix="/market", # Prefix removed, handled during inclusion in main.py
     tags=["market"],  # Tag for OpenAPI documentation
     responses={404: {"description": "Not found"}},
 )
@@ -49,9 +49,9 @@ async def get_current_price(
         logging.error(f"Error in /price/{symbol} endpoint: {e}")
         raise HTTPException(status_code=500, detail=f"Internal server error fetching price for {symbol}")
 
-@router.get("/klines/{symbol}", summary="Get Historical Klines (Candlesticks)")
-async def get_historical_klines(
-    symbol: str,
+@router.get("/", summary="Get Historical Klines (Candlesticks) by Query Params") # Changed path to root relative to router prefix
+async def get_market_data( # Renamed function for clarity
+    symbol: str = Query(..., description="Trading symbol (e.g., BTCUSDT)"), # Changed symbol to Query parameter
     interval: str = Query(default=BinanceLibClient.KLINE_INTERVAL_1HOUR, description=f"Candlestick interval (e.g., {BinanceLibClient.KLINE_INTERVAL_1MINUTE}, {BinanceLibClient.KLINE_INTERVAL_1HOUR}, {BinanceLibClient.KLINE_INTERVAL_1DAY})"),
     limit: int = Query(default=100, ge=1, le=1000, description="Number of klines to retrieve (max 1000)"),
     startTime: Optional[int] = Query(default=None, description="Start timestamp in milliseconds"),
@@ -93,7 +93,7 @@ async def get_historical_klines(
         return {"symbol": symbol.upper(), "interval": interval, "klines": klines} # Return raw klines for now
     
     except Exception as e:
-        logging.error(f"Error in /klines/{symbol} endpoint: {e}")
+        logging.error(f"Error in / endpoint (mounted at /api/market) for symbol {symbol}: {e}") # Updated log message
         # Consider more specific error handling based on Binance API errors
         raise HTTPException(status_code=500, detail=f"Internal server error fetching klines for {symbol}")
 

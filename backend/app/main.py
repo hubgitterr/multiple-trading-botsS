@@ -2,12 +2,12 @@ from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 # Placeholder for future authentication dependency
 # from .dependencies import get_current_user
-from backend.app.market import routes as market_routes
-from backend.app.orders import routes as order_routes
-from backend.app.user import routes as user_routes
-from backend.app.bots import routes as bot_routes
-from backend.app.backtest import routes as backtest_routes # Added backtest routes
-from backend.app.error_handlers import register_error_handlers
+from .market import routes as market_routes
+from .orders import routes as order_routes
+from .user import routes as user_routes
+from .bots import routes as bot_routes
+from .backtest import routes as backtest_routes # Added backtest routes
+from .error_handlers import register_error_handlers
 
 app = FastAPI(title="Trading Bot API", version="0.1.0")
 
@@ -46,10 +46,7 @@ async def read_root():
 #     # TODO: Implement logic to get status of running bots
 #     return {"status": "Bot status endpoint placeholder"}
 
-@app.get("/api/market/data")
-async def get_market_data(symbol: str = "BTCUSDT"):
-     # TODO: Implement logic to fetch market data (e.g., from Binance)
-    return {"symbol": symbol, "data": "Market data endpoint placeholder"}
+# Removed placeholder /api/market/data endpoint
 
 @app.get("/api/user/settings")
 async def get_user_settings():
@@ -59,11 +56,11 @@ async def get_user_settings():
 # Add more specific routes for bots, market, user management later
 # e.g., app.include_router(bot_router, prefix="/api/bots", tags=["bots"])
 # Include API routers
-app.include_router(market_routes.router, prefix="/api")
+app.include_router(market_routes.router, prefix="/api/market", tags=["market"]) # Changed prefix and added tags
 app.include_router(order_routes.router, prefix="/api")
 app.include_router(user_routes.router, prefix="/api")
 app.include_router(bot_routes.router, prefix="/api")
-app.include_router(backtest_routes.router, prefix="/api") # Added backtest router
+app.include_router(backtest_routes.router, prefix="/api/backtest", tags=["backtest"]) # Added backtest router with specific prefix and tag
 # Add other routers (user) here later
 if __name__ == "__main__":
     import uvicorn

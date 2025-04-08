@@ -21,6 +21,7 @@ class BotConfig(Base):
     symbol = Column(String, nullable=False, index=True)
     settings = Column(JSON, nullable=False, default={}) # Store strategy settings as JSON
     is_enabled = Column(Boolean, default=True, nullable=False)
+    # api_key_id = Column(UUID(as_uuid=True), ForeignKey("api_keys.id"), nullable=True, index=True) # Temporarily removed due to DB issue
     
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())

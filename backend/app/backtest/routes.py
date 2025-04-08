@@ -1,168 +1,114 @@
-# backend/app/backtest/routes.py
-import logging
-import uuid
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-from typing import Dict, Any
-from datetime import datetime # Added missing import
+import uuid # Added for UUID conversion
+from uuid import UUID
+from datetime import datetime
+import pandas as pd # For data handling
 
-# Dependencies and Utils
 from backend.db.session import get_db
-from backend.app.auth_utils import get_current_user, UserPayload
-from backend.db import crud_bot_config, crud_api_key # Need crud for bot config and potentially keys
-from backend.utils.historical import fetch_historical_data
-from backend.utils.backtest import BacktestEngine
-from backend.utils.binance_client import BinanceAPIClient # Needed for historical fetch
-from backend.schemas import backtest as schemas_backtest # Import backtest schemas
+from backend.app.auth_utils import get_current_user, UserPayload # Corrected import and added UserPayload
+from backend import schemas, models
+from backend.db import crud_bot_config
+from backend.backtesting.engine import run_backtest
+# Assuming a utility exists for fetching historical data, e.g., in backend/utils/market_data.py
+# Need to confirm the actual location and function name. Let's assume 'fetch_historical_klines' for now.
+from backend.utils.binance_client import BinanceAPIClient # Corrected import to use actual class name
 
-logger = logging.getLogger(__name__)
+router = APIRouter()
 
-router = APIRouter(
-    prefix="/backtest",
-    tags=["backtest"],
-    dependencies=[Depends(get_current_user)], # Protect backtesting endpoint
-    responses={404: {"description": "Not found"}},
-)
-
-# --- Helper to get Binance client instance (potentially shared) ---
-# Reuse or adapt the one from market/order routes if suitable
-# For simplicity, create a new one here for the backtest context
-# In a real app, manage client instances more carefully (e.g., lifespan events)
-async def get_backtest_binance_client(
-     user_id: uuid.UUID, # Pass user ID to fetch correct keys
-     db: Session = Depends(get_db)
-) -> BinanceAPIClient:
-     # TODO: Implement logic to fetch the *correct* API key for the user
-     # (e.g., a default one, or one specified in bot config?)
-     # For now, we assume keys are in .env or use a placeholder/mock client
-
-     # Placeholder: Fetch first key for user (replace with proper logic)
-     api_keys = crud_api_key.get_api_keys_by_user(db=db, user_id=user_id)
-     public_key = api_keys[0].api_key_public if api_keys else None
-
-     decrypted_secret = None
-     if public_key:
-          decrypted_secret = crud_api_key.get_decrypted_secret_key(db=db, user_id=user_id, api_key_public=public_key)
-
-     if not public_key or not decrypted_secret:
-          logger.error(f"No valid API keys found or decryption failed for user {user_id} for backtest data fetching.")
-          # Fallback to environment keys or raise error? Using env keys for now.
-          client = BinanceAPIClient() # Uses keys from .env by default
-     else:
-          client = BinanceAPIClient(api_key=public_key, secret_key=decrypted_secret)
-
-     await client.initialize() # Ensure client is initialized
-     if not client.client:
-          raise HTTPException(status_code=503, detail="Failed to initialize Binance client for historical data.")
-     return client
-
-# --- Backtest Endpoint ---
-
-@router.post("/run", response_model=schemas_backtest.BacktestResults, summary="Run Backtest Simulation")
-async def run_backtest(
-    request: schemas_backtest.BacktestRequest,
-    background_tasks: BackgroundTasks, # Use background tasks for potentially long runs
+@router.post("/{config_id}", response_model=schemas.backtest.BacktestResult, status_code=status.HTTP_200_OK)
+async def trigger_backtest(
+    config_id: UUID,
+    request_data: schemas.backtest.BacktestRequest,
     db: Session = Depends(get_db),
-    current_user: UserPayload = Depends(get_current_user)
+    user_payload: UserPayload = Depends(get_current_user), # Changed dependency to use correct function and type
 ):
     """
-    Initiates a backtest simulation for a given bot configuration and date range.
+    Triggers a backtest simulation for a specific bot configuration.
     """
-    user_id = uuid.UUID(current_user.sub) # Convert JWT sub to UUID
-    logger.info(f"Received backtest request for config_id={request.config_id} by user={user_id}")
+    # 1. Retrieve BotConfig
+    db_bot_config = crud_bot_config.get_bot_config(db=db, config_id=config_id, user_id=uuid.UUID(user_payload.sub)) # Corrected kwarg and added user_id check
+    if db_bot_config is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Bot configuration not found")
+    # Compare against the user ID from the JWT payload (subject)
+    if db_bot_config.user_id != uuid.UUID(user_payload.sub):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to access this configuration")
 
-    # 1. Fetch Bot Configuration from DB
-    # Assuming crud_bot_config expects UUID for user_id based on typical patterns
-    bot_config_model = crud_bot_config.get_bot_config(db=db, config_id=request.config_id, user_id=user_id)
-    if not bot_config_model:
-        raise HTTPException(status_code=404, detail="Bot configuration not found or access denied.")
+    # 2. Determine symbol and interval from BotConfig
+    # Assuming symbol and interval are stored directly or within parameters
+    # Adjust based on actual BotConfig model structure
+    symbol = db_bot_config.parameters.get("symbol") # Example access
+    interval = db_bot_config.parameters.get("interval") # Example access
 
-    # Convert SQLAlchemy model to dict for BacktestEngine (or use Pydantic schema)
-    bot_config_dict = {c.name: getattr(bot_config_model, c.name) for c in bot_config_model.__table__.columns}
-    # Ensure settings is a dict
-    bot_config_dict['settings'] = bot_config_dict.get('settings', {})
+    if not symbol or not interval:
+         raise HTTPException(
+             status_code=status.HTTP_400_BAD_REQUEST,
+             detail="Bot configuration is missing required 'symbol' or 'interval' parameters for backtesting."
+         )
 
-    # 2. Fetch Historical Data (using a potentially user-specific client)
-    # For simplicity now, assume backtest uses default client keys from .env
-    # binance_client = await get_backtest_binance_client(user_id=user_id, db=db) # Pass user_id and db
-    binance_client = BinanceAPIClient() # Simpler: Use env keys for now
-    await binance_client.initialize()
-    if not binance_client.client:
-         raise HTTPException(status_code=503, detail="Failed to initialize Binance client for historical data.")
+    # 3. Initialize Binance Client
+    # TODO: Handle potential API key requirements if needed for the client
+    client = BinanceAPIClient() # Use correct class name
 
-    interval = bot_config_dict.get("settings", {}).get("interval", "1h") # Get interval from config
-    symbol = bot_config_dict.get("symbol")
-
-    if not symbol:
-        raise HTTPException(status_code=400, detail="Bot configuration is missing the 'symbol'.")
-
-
-    logger.info(f"Fetching historical data for {symbol} ({interval})...")
-    historical_data = await fetch_historical_data(
-        client=binance_client,
-        symbol=symbol,
-        interval=interval,
-        start_date_str=request.start_date.isoformat(),
-        end_date_str=request.end_date.isoformat(),
-        use_cache=True # Enable caching for backtests
-    )
-    await binance_client.close_connection() # Close client after fetching
-
-    if historical_data is None or historical_data.empty:
-        raise HTTPException(status_code=404, detail=f"Could not fetch historical data for {symbol} in the specified range.")
-
-    # 3. Initialize and Run Backtest Engine
-    logger.info("Initializing Backtest Engine...")
+    # 4. Fetch Historical Data
     try:
-        engine = BacktestEngine(
-            historical_data=historical_data,
-            bot_config=bot_config_dict,
-            initial_capital=request.initial_capital,
-            commission_percent=request.commission_percent / 100.0 # Convert percentage
+        print(f"Fetching historical data for {symbol}, interval {interval}, from {request_data.start_date} to {request_data.end_date}")
+        # Convert datetime to string format suitable for the API client
+        start_str = request_data.start_date.isoformat()
+        end_str = request_data.end_date.isoformat()
+
+        # Assuming fetch_historical_klines returns a pandas DataFrame
+        # Adjust parameters as needed based on the actual function signature
+        # Assuming get_klines returns a pandas DataFrame compatible with the backtesting engine
+        historical_data_df: pd.DataFrame = await client.get_klines(
+            symbol=symbol,
+            interval=interval,
+            start_str=start_str, # Use string format
+            end_str=end_str      # Use string format
+        )
+        print(f"Fetched {len(historical_data_df)} klines.")
+        if historical_data_df.empty:
+             raise HTTPException(
+                 status_code=status.HTTP_404_NOT_FOUND,
+                 detail=f"No historical data found for {symbol} ({interval}) in the specified date range."
+             )
+
+    except Exception as e:
+        # Log the error details for debugging
+        print(f"Error fetching historical data: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to fetch historical data for {symbol}. Error: {str(e)}"
         )
 
-        # Running synchronously for now, consider background task for long backtests
-        results_dict = engine.run()
-
-        if not results_dict:
-             raise HTTPException(status_code=500, detail="Backtest engine failed to produce results.")
-
-        # 4. Format and Return Results (potentially truncated)
-        # Convert timestamps in equity curve for Pydantic validation
-        results_dict['equity_curve'] = [
-             {"timestamp": ts, "value": val} for ts, val in results_dict.get('equity_curve', [])
-        ]
-         # Convert timestamps in trades
-        for trade in results_dict.get('trades', []):
-             if isinstance(trade.get('timestamp'), datetime):
-                  trade['timestamp'] = trade['timestamp'] # Already datetime
-             # Add handling if timestamp is not datetime (e.g., from older format)
-
-        # Truncate results if necessary before validation
-        # Accessing Pydantic v1 style field info - adjust if using v2 model_config
-        max_trades = schemas_backtest.BacktestResults.__fields__['trades'].field_info.max_items if hasattr(schemas_backtest.BacktestResults.__fields__['trades'].field_info, 'max_items') else 1000
-        max_equity = schemas_backtest.BacktestResults.__fields__['equity_curve'].field_info.max_items if hasattr(schemas_backtest.BacktestResults.__fields__['equity_curve'].field_info, 'max_items') else 2000
-
-        if len(results_dict.get('trades', [])) > max_trades:
-             logger.warning(f"Truncating trades list from {len(results_dict['trades'])} to {max_trades}")
-             results_dict['trades'] = results_dict['trades'][:max_trades]
-        if len(results_dict.get('equity_curve', [])) > max_equity:
-             logger.warning(f"Truncating equity curve from {len(results_dict['equity_curve'])} to {max_equity}")
-             results_dict['equity_curve'] = results_dict['equity_curve'][:max_equity]
+    # 5. Run Backtest
+    try:
+        print(f"Running backtest engine for config {config_id}...")
+        # Ensure BotConfig schema matches what run_backtest expects
+        # We might need to convert the DB model (models.BotConfig) to the Pydantic schema (schemas.BotConfig)
+        # If crud returns the DB model, convert it. Let's assume crud returns a model compatible with schemas.BotConfig for now.
+        # Or, more likely, run_backtest should accept the DB model or we convert here.
+        # Let's assume run_backtest can handle the DB model or we adapt it later.
+        # For now, pass the DB model directly if its structure is compatible enough.
+        # A safer approach is to explicitly convert:
+        bot_config_schema = schemas.BotConfig.from_orm(db_bot_config)
 
 
-        # Validate results against Pydantic schema before returning
-        validated_results = schemas_backtest.BacktestResults(**results_dict)
+        backtest_result: schemas.backtest.BacktestResult = run_backtest(
+            bot_config=bot_config_schema, # Pass the Pydantic schema instance
+            historical_data=historical_data_df,
+            initial_capital=request_data.initial_capital
+        )
+        print(f"Backtest completed. Result metrics: {backtest_result.metrics}")
 
-        logger.info(f"Backtest completed successfully for config_id={request.config_id}")
-        return validated_results
-
-    except ValueError as ve:
-         logger.error(f"Value error during backtest initialization or run: {ve}")
-         raise HTTPException(status_code=400, detail=f"Backtest configuration error: {ve}")
     except Exception as e:
-        logger.exception(f"Unexpected error during backtest run for config_id={request.config_id}: {e}")
-        raise HTTPException(status_code=500, detail="An unexpected error occurred during the backtest.")
+        # Log the error details for debugging
+        print(f"Error running backtest engine: {e}")
+        # Consider more specific error handling based on potential engine errors
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Backtesting simulation failed. Error: {str(e)}"
+        )
 
-# TODO: Add endpoint to get saved backtest results by ID?
-# @router.get("/results/{result_id}", ...)
+    # 6. Return Results
+    return backtest_result

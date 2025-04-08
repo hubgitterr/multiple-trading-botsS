@@ -1,13 +1,15 @@
 // components/forms/MomentumBotForm.js
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react'; // Added useEffect
 import { useForm } from 'react-hook-form';
-import axiosInstance from '../../lib/axiosInstance'; // Import the configured Axios instance
+// Removed axiosInstance import
 
-export default function MomentumBotForm({ onSubmit, initialData = {}, isSubmitting: parentIsSubmitting }) {
-  const { register, handleSubmit, formState: { errors, isSubmitting: formIsSubmitting }, setError, reset } = useForm({
-    defaultValues: {
+// Rename prop for clarity and consistency
+export default function MomentumBotForm({ onSubmit, initialData = {}, isSubmitting }) {
+  const { register, handleSubmit, formState: { errors }, reset } = useForm({ // Removed formIsSubmitting
+    // Use initialData for defaultValues directly, adding is_enabled
+    defaultValues: initialData ? {
       name: initialData.name || '',
       symbol: initialData.symbol || 'BTCUSDT',
       settings: {
@@ -20,14 +22,56 @@ export default function MomentumBotForm({ onSubmit, initialData = {}, isSubmitti
         macd_signal: initialData.settings?.macd_signal || 9,
         ema_period: initialData.settings?.ema_period || 200,
         order_quantity: initialData.settings?.order_quantity || 0.001,
-      }
+      },
+      is_enabled: initialData.is_enabled !== undefined ? initialData.is_enabled : true,
+    } : {
+      name: '',
+      symbol: 'BTCUSDT',
+      settings: {
+        interval: '1h', rsi_period: 14, rsi_overbought: 70, rsi_oversold: 30,
+        macd_fast: 12, macd_slow: 26, macd_signal: 9, ema_period: 200, order_quantity: 0.001
+      },
+      is_enabled: true,
     }
   });
-  const [apiError, setApiError] = useState(null);
 
-  const handleFormSubmit = async (data) => {
-    console.log("MomentumBotForm handleFormSubmit called with data:", data); // Add log here
-    setApiError(null); // Clear previous errors
+  // Reset form when initialData changes
+  useEffect(() => {
+    if (initialData) {
+      reset({
+        name: initialData.name || '',
+        symbol: initialData.symbol || 'BTCUSDT',
+        settings: {
+          interval: initialData.settings?.interval || '1h',
+          rsi_period: initialData.settings?.rsi_period || 14,
+          rsi_overbought: initialData.settings?.rsi_overbought || 70,
+          rsi_oversold: initialData.settings?.rsi_oversold || 30,
+          macd_fast: initialData.settings?.macd_fast || 12,
+          macd_slow: initialData.settings?.macd_slow || 26,
+          macd_signal: initialData.settings?.macd_signal || 9,
+          ema_period: initialData.settings?.ema_period || 200,
+          order_quantity: initialData.settings?.order_quantity || 0.001,
+        },
+        is_enabled: initialData.is_enabled !== undefined ? initialData.is_enabled : true,
+      });
+    } else {
+       reset({ // Reset to default create state
+        name: '',
+        symbol: 'BTCUSDT',
+        settings: {
+          interval: '1h', rsi_period: 14, rsi_overbought: 70, rsi_oversold: 30,
+          macd_fast: 12, macd_slow: 26, macd_signal: 9, ema_period: 200, order_quantity: 0.001
+        },
+        is_enabled: true,
+      });
+    }
+  }, [initialData?.id, reset]); // Depend on ID instead of object reference
+  const [apiError, setApiError] = useState(null);
+  // Remove initialApiKeyId calculation
+
+  // Simplified submit handler
+  const handleFormSubmit = (data) => {
+    setApiError(null); // Clear local error state if needed, though parent handles it
     const payload = {
       name: data.name,
       bot_type: 'MomentumBot',
@@ -42,35 +86,19 @@ export default function MomentumBotForm({ onSubmit, initialData = {}, isSubmitti
         macd_signal: parseInt(data.settings.macd_signal, 10),
         ema_period: parseInt(data.settings.ema_period, 10),
         order_quantity: parseFloat(data.settings.order_quantity),
-      }
+      },
+      is_enabled: data.is_enabled, // Include is_enabled
     };
-
-    const url = initialData.id
-      ? `/bots/configs/${initialData.id}` // Use relative path
-      : '/bots/configs'; // Use relative path
-    const method = initialData.id ? 'put' : 'post';
-
-    try {
-      const response = await axiosInstance[method](url, payload);
-      onSubmit(response.data); // Pass response data to parent handler
-      // Optionally reset form after successful submission
-      // if (!initialData.id) reset();
-    } catch (error) {
-      console.error("API Error:", error.response?.data || error.message);
-      const errorMsg = error.response?.data?.detail || 'Failed to save configuration. Please try again.';
-      setApiError(errorMsg);
-      // Optionally set field errors if the API provides them
-      // setError("root.serverError", { type: "manual", message: errorMsg });
-    }
+    // Pass formatted payload to parent onSubmit
+    onSubmit(payload);
   };
 
   return (
     <form onSubmit={handleSubmit(handleFormSubmit)} className="space-y-4">
       <h3 className="text-lg font-medium leading-6 text-gray-900 dark:text-white">Momentum Bot Configuration</h3>
 
-      {apiError && <p className="mt-2 text-sm text-red-600">{apiError}</p>}
-      {/* {errors.root?.serverError && <p className="mt-2 text-sm text-red-600">{errors.root.serverError.message}</p>} */}
-
+      {/* Removed local apiError display, parent shows errors */}
+      
       <div>
         <label htmlFor="name" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Bot Name</label>
         <input
@@ -94,6 +122,8 @@ export default function MomentumBotForm({ onSubmit, initialData = {}, isSubmitti
         />
         {errors.symbol && <p className="mt-1 text-xs text-red-500">{errors.symbol.message}</p>}
       </div>
+
+      {/* Remove API Key Selection Dropdown */}
 
       <div>
         <label htmlFor="interval" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Candle Interval</label>
@@ -189,13 +219,26 @@ export default function MomentumBotForm({ onSubmit, initialData = {}, isSubmitti
         {errors.settings?.order_quantity && <p className="mt-1 text-xs text-red-500">{errors.settings.order_quantity.message}</p>}
       </div>
 
+      {/* Add is_enabled Checkbox */}
+       <div className="flex items-center pt-2">
+         <input
+           id="is_enabled_momentum" // Use unique ID
+           type="checkbox"
+           {...register("is_enabled")}
+           className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded dark:bg-gray-700 dark:border-gray-600"
+         />
+         <label htmlFor="is_enabled_momentum" className="ml-2 block text-sm text-gray-900 dark:text-gray-300">
+           Enable this bot configuration?
+         </label>
+       </div>
+
       <div className="pt-2">
         <button
           type="submit"
-          disabled={parentIsSubmitting || formIsSubmitting} // Use parent prop or form state
+          disabled={isSubmitting} // Use the isSubmitting prop from parent
           className="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50"
         >
-          {(parentIsSubmitting || formIsSubmitting) ? 'Saving...' : (initialData.id ? 'Update Configuration' : 'Create Configuration')}
+          {isSubmitting ? 'Saving...' : (initialData.id ? 'Update Configuration' : 'Create Configuration')}
         </button>
       </div>
     </form>

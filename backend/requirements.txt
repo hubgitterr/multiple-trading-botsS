@@ -4,9 +4,10 @@ python-binance
 sqlalchemy
 psycopg2-binary
 pandas
-numpy
+numpy==1.26.4
 pydantic[email] # Add email validation dependency
 python-dotenv
 websockets
 PyJWT[crypto]
 cryptography
+pandas-ta==0.3.14b0
