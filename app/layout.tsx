@@ -1,7 +1,9 @@
+
 import type { Metadata } from "next";
 import localFont from "next/font/local";
 import "./globals.css";
 import { AuthProvider } from '../lib/context/AuthContext.js'; // Adjust path if needed
+import ChartSetupWrapper from '../components/common/ChartSetupWrapper'; // Import the wrapper
 const geistSans = localFont({
   src: "./fonts/GeistVF.woff",
   variable: "--font-geist-sans",
@@ -29,7 +31,9 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
           <AuthProvider> {/* Wrap children with AuthProvider */}
-            {children}
+            <ChartSetupWrapper>
+              {children}
+            </ChartSetupWrapper>
           </AuthProvider>
       </body>
     </html>

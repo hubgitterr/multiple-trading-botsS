@@ -1,12 +1,14 @@
 import asyncio
 import logging
 from typing import Dict, Any, Optional, List
-
+from decimal import Decimal # Import Decimal for precision handling
+ 
 # Import base class and utilities
 from backend.bots.base_bot import BaseBot
 from backend.utils.binance_client import BinanceAPIClient
 from backend.utils import grid as grid_utils # Import our grid calculation functions
-
+from backend.utils.formatting import format_quantity # Import our new formatting function
+ 
 # Configure logging for this specific bot type
 logger = logging.getLogger(f"bot.{__name__}")
 # Ensure root logger is configured elsewhere
@@ -43,6 +45,7 @@ class GridBot(BaseBot):
         self.state['order_quantity_per_grid'] = 0.0
         self.state['initial_setup_complete'] = False
         self.state['last_check_time'] = None
+        self.state['step_size'] = None # Store the symbol's step size for quantity formatting
 
         logger.info(f"GridBot {self.bot_id} initialized: Range ({self.lower_price}-{self.upper_price}), Grids: {self.num_grids} ({self.grid_type}), Investment: {self.total_investment}")
 
@@ -76,7 +79,39 @@ class GridBot(BaseBot):
         
         logger.info(f"GridBot {self.bot_id}: Current market price: {current_price}")
 
-        # 3. Determine Buy/Sell Levels and Calculate Quantity
+        # --- Price Range Validation ---
+        if not (self.lower_price <= current_price <= self.upper_price):
+            error_msg = (
+                f"GridBot {self.bot_id}: Current market price ({current_price}) is outside the "
+                f"specified grid range ({self.lower_price} - {self.upper_price}). "
+                f"Please adjust the range."
+            )
+            logger.error(error_msg)
+            self.state['status'] = 'Error: Price outside grid range'
+            self.is_running = False # Prevent further execution
+            return False # Stop the setup process
+        # --- End Price Range Validation ---
+
+        # 3. Fetch Symbol Info for Quantity Formatting
+        try:
+            symbol_info = await self.binance_client.client.get_symbol_info(symbol=self.symbol)
+            if not symbol_info:
+                raise ValueError("Received empty symbol info.")
+        
+            lot_size_filter = next((f for f in symbol_info.get('filters', []) if f.get('filterType') == 'LOT_SIZE'), None)
+            if not lot_size_filter or 'stepSize' not in lot_size_filter:
+                raise ValueError("LOT_SIZE filter or stepSize not found in symbol info.")
+        
+            self.state['step_size'] = lot_size_filter['stepSize']
+            logger.info(f"GridBot {self.bot_id}: Fetched stepSize for {self.symbol}: {self.state['step_size']}")
+        
+        except Exception as e:
+            logger.error(f"GridBot {self.bot_id}: Failed to fetch or parse symbol info for stepSize: {e}")
+            self.state['status'] = 'Error: Failed to get symbol info'
+            self.is_running = False
+            return False
+        
+        # 4. Determine Buy/Sell Levels and Calculate Quantity
         buy_levels = [lvl for lvl in levels if lvl < current_price]
         sell_levels = [lvl for lvl in levels if lvl > current_price]
         
@@ -90,20 +125,31 @@ class GridBot(BaseBot):
         # Calculate quantity per grid (using buy side investment)
         # Note: Assumes equal quantity for buy/sell for simplicity. Real strategy might differ.
         num_buy_grids = len(buy_levels)
-        self.state['order_quantity_per_grid'] = grid_utils.calculate_order_size_per_grid(
+        # Calculate raw quantity
+        raw_quantity = grid_utils.calculate_order_size_per_grid(
             self.total_investment, num_buy_grids, current_price # Use current price as estimate
         )
         
-        if not self.state['order_quantity_per_grid'] or self.state['order_quantity_per_grid'] <= 0:
-             logger.error(f"GridBot {self.bot_id}: Failed to calculate valid order quantity.")
+        if not raw_quantity or raw_quantity <= 0:
+             logger.error(f"GridBot {self.bot_id}: Failed to calculate valid raw order quantity ({raw_quantity}).")
              self.state['status'] = 'Error: Order quantity calculation failed'
              self.is_running = False
              return False
-             
-        qty = self.state['order_quantity_per_grid']
-        logger.info(f"GridBot {self.bot_id}: Order quantity per grid: {qty:.8f}")
+        
+        # Format quantity according to step size
+        formatted_quantity = format_quantity(raw_quantity, self.state['step_size'])
+        
+        if not formatted_quantity or formatted_quantity <= 0:
+             logger.error(f"GridBot {self.bot_id}: Formatted quantity is invalid ({formatted_quantity}) after applying stepSize {self.state['step_size']} to raw quantity {raw_quantity}.")
+             self.state['status'] = 'Error: Formatted quantity invalid'
+             self.is_running = False
+             return False
+        
+        self.state['order_quantity_per_grid'] = formatted_quantity # Store the formatted quantity
+        qty = self.state['order_quantity_per_grid'] # Use the formatted quantity going forward
+        logger.info(f"GridBot {self.bot_id}: Raw quantity: {raw_quantity:.12f}, Formatted quantity per grid (stepSize {self.state['step_size']}): {qty}")
 
-        # 4. Place Initial Orders (LIMIT orders)
+        # 5. Place Initial Orders (LIMIT orders) using FORMATTED quantity
         # Cancel any existing orders first (important for restarts/rebalancing)
         # await self._cancel_all_grid_orders() # Implement this helper
 

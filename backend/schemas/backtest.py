@@ -30,10 +30,9 @@ class BacktestResult(BaseModel):
 # --- New schema for the backtest request ---
 
 class BacktestRequest(BaseModel):
-    start_date: datetime
-    end_date: datetime
+    start_date: str # Expecting "YYYY-MM-DD" string from frontend
+    end_date: str   # Expecting "YYYY-MM-DD" string from frontend
+    interval: str   # e.g., '1h', '4h', '1d'
     initial_capital: float
-    # timeframe: Optional[str] = None # Decided against adding timeframe here, should be derived from BotConfig
 
-    class Config:
-        orm_mode = True # Keep or remove based on usage, might not be needed here
+    # No Config class needed for a simple request body schema unless using ORM features

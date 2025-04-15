@@ -50,7 +50,7 @@ class MomentumBot(BaseBot):
                 interval=self.interval,
                 limit=self.kline_limit 
             )
-            if not klines or len(klines) < self.kline_limit:
+            if klines.empty or len(klines) < self.kline_limit:
                 logger.warning(f"Bot {self.bot_id}: Insufficient kline data received ({len(klines)}/{self.kline_limit}).")
                 return None
 

@@ -94,7 +94,7 @@ export default function BotsPage() {
   }, [setBacktestingConfigId, setIsBacktestModalOpen]);
 
   // Function to handle the submission of the backtest form
-  const handleBacktestSubmit = useCallback(async (backtestParams: { start_date: string; end_date: string; initial_capital: number }) => {
+  const handleBacktestSubmit = useCallback(async (backtestParams: { start_date: string; end_date: string; interval: string; initial_capital: number }) => {
     if (!backtestingConfigId) {
       console.error("BotsPage: No config ID selected for backtesting.");
       setBacktestError("No configuration selected for backtest.");

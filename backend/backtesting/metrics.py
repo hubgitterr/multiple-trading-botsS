@@ -43,13 +43,16 @@ def calculate_max_drawdown(equity_curve: pd.DataFrame) -> Dict[str, float]:
     if equity_curve.empty or len(equity_curve) < 2:
         return {"absolute_max_drawdown": 0.0, "percentage_max_drawdown": 0.0}
 
-    equity_curve = equity_curve.sort_values(by='timestamp').set_index('timestamp')['equity']
+    # Ensure unique timestamp index, keeping the last equity value for duplicates
+    equity_curve = equity_curve.sort_values(by='timestamp')
+    equity_curve = equity_curve.drop_duplicates(subset=['timestamp'], keep='last')
+    equity_curve = equity_curve.set_index('timestamp')['equity']
     cumulative_max = equity_curve.cummax()
     drawdown = equity_curve - cumulative_max
     max_drawdown_absolute = drawdown.min() # This will be negative or zero
 
     peak_at_max_drawdown = cumulative_max[drawdown.idxmin()]
-    max_drawdown_percentage = (max_drawdown_absolute / peak_at_max_drawdown) * 100 if peak_at_max_drawdown else 0.0
+    max_drawdown_percentage = (max_drawdown_absolute / peak_at_max_drawdown) * 100 if pd.notna(peak_at_max_drawdown) and peak_at_max_drawdown > 0 else 0.0
 
     return {
         "absolute_max_drawdown": round(abs(max_drawdown_absolute), 4),
@@ -65,7 +68,10 @@ def calculate_sharpe_ratio(equity_curve: pd.DataFrame, risk_free_rate: float = 0
     if equity_curve.empty or len(equity_curve) < 2:
         return 0.0
 
-    equity_curve = equity_curve.sort_values(by='timestamp').set_index('timestamp')['equity']
+    # Ensure unique timestamp index, keeping the last equity value for duplicates
+    equity_curve = equity_curve.sort_values(by='timestamp')
+    equity_curve = equity_curve.drop_duplicates(subset=['timestamp'], keep='last')
+    equity_curve = equity_curve.set_index('timestamp')['equity']
     returns = equity_curve.pct_change().dropna()
 
     if returns.empty or returns.std() == 0:

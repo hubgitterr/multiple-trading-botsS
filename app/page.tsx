@@ -1,10 +1,13 @@
 'use client'; // Mark as client component because it uses hooks/components that need client-side rendering
 
-import React, { useState, useCallback, useRef, useEffect } from 'react'; // Keep useEffect for now, might be used by modal later
+import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react'; // Keep useEffect for now, might be used by modal later
 import DashboardLayout from '@/components/dashboard/Layout'; // Import the main layout
 import MarketOverview from '@/components/dashboard/MarketOverview';
 import BotControlPanel from '@/components/dashboard/BotControl';
-import PriceChart from '@/components/charts/PriceChart'; // Example chart
+// Import the new chart components
+import RealTimeChart from '@/components/charts/RealTimeChart';
+import CandlestickChart from '@/components/charts/CandlestickChart';
+import HeatmapChart from '@/components/charts/HeatmapChart';
 // Import Bot configuration forms needed for the modal
 import MomentumBotForm from '@/components/forms/MomentumBotForm';
 import GridBotForm from '@/components/forms/GridBotForm';
@@ -37,9 +40,11 @@ export default function DashboardPage() {
   const [isBacktestLoading, setIsBacktestLoading] = useState(false);
   const [backtestError, setBacktestError] = useState<string | null>(null);
 
-  // Example: Fetch data needed for charts or pass down props
-  const exampleChartSymbol = 'BTCUSDT';
-  // In a real app, fetch chart data here or within PriceChart using SWR/useEffect
+  // Placeholder: In a real app, fetch data needed for charts or pass down props
+  // Define symbols for the RealTimeChart and memoize them
+  const realTimeChartSymbols = useMemo(() => ['BTCUSDT', 'ETHUSDT'], []);
+
+  // const exampleChartSymbol = 'BTCUSDT';
 
   // --- Handlers and Form Logic (copied/adapted from app/bots/page.tsx) ---
 
@@ -172,12 +177,45 @@ useEffect(() => {
       {/* Wrap content in the layout */}
       <h1 className="text-2xl font-semibold text-gray-900 dark:text-white mb-6">Dashboard</h1>
 
-      {/* Add dashboard components here */}
+      {/* Main Dashboard Content Area */}
       <div className="space-y-6">
+        {/* Market Overview - Spans full width */}
         <MarketOverview />
-        {/* Pass the handleEditClick and handleBacktestClick functions down */}
-        <BotControlPanel onEditClick={handleEditClick} onBacktestClick={handleBacktestClick} />
 
+        {/* Grid Layout for Charts and Controls */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* Real-time Chart */}
+          <div className="bg-white dark:bg-gray-800 p-4 rounded-lg shadow">
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-3">Live Feed</h2>
+            <div className="h-64 md:h-80"> {/* Fixed height container */}
+               {/* Pass the memoized symbols array */}
+               <RealTimeChart symbols={realTimeChartSymbols} />
+            </div>
+          </div>
+
+          {/* Candlestick Chart */}
+          <div className="bg-white dark:bg-gray-800 p-4 rounded-lg shadow">
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-3">Price Action</h2>
+             <div className="h-64 md:h-80"> {/* Fixed height container */}
+              <CandlestickChart />
+            </div>
+          </div>
+
+          {/* Heatmap Chart */}
+          <div className="bg-white dark:bg-gray-800 p-4 rounded-lg shadow">
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-3">Market Heatmap</h2>
+             <div className="h-64 md:h-80"> {/* Fixed height container */}
+              <HeatmapChart />
+            </div>
+          </div>
+
+          {/* Bot Control Panel */}
+          <div className="bg-white dark:bg-gray-800 p-4 rounded-lg shadow">
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-3">Bot Controls</h2>
+            {/* Pass the handleEditClick and handleBacktestClick functions down */}
+            <BotControlPanel onEditClick={handleEditClick} onBacktestClick={handleBacktestClick} />
+          </div>
+        </div>
         {/* --- Backtest Results Section --- */}
         <div className="mt-6">
           {isBacktestLoading && (
@@ -198,10 +236,8 @@ useEffect(() => {
         </div>
         {/* --- End Backtest Results Section --- */}
         
-        {/* Example of including a chart */}
-        <PriceChart symbol={exampleChartSymbol} /* chartData={fetchedChartData} */ /> 
-
-        {/* Add other components like Performance, Backtest interface etc. */}
+        {/* Removed old PriceChart example */}
+        {/* Add other components like Performance, Backtest interface etc. if needed */}
         {/* <PerformanceDashboard /> */}
         {/* <BacktestInterface /> */}
       </div>

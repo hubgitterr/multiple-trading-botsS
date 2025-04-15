@@ -1,8 +1,9 @@
 import pandas as pd
 import pandas_ta as ta # Added for technical indicators
 import numpy as np # Added for grid calculation
-from typing import List, Dict, Any, Optional
-from backend.schemas.bot_config import BotConfig
+from typing import List, Dict, Any, Optional # Keep type hints
+# Remove BotConfig import as it's no longer the primary input type
+# from backend.schemas.bot_config import BotConfig
 from backend.backtesting.metrics import calculate_metrics
 from pydantic import BaseModel
 import math # Added for checking NaN
@@ -10,8 +11,15 @@ import math # Added for checking NaN
 # Schemas (KLine, Trade, BacktestResult) are now defined in backend.schemas.backtest
 from backend.schemas.backtest import KLine, Trade, BacktestResult
 
+# Update function signature to accept individual parameters
 def run_backtest(
-    bot_config: BotConfig,
+    symbol: str,
+    bot_type: str,
+    name: str, # For logging/context
+    settings: Dict[str, Any], # Bot-specific parameters
+    interval: str, # Passed from request, might be useful for context/logging
+    start_date: str, # Passed from request, might be useful for context/logging
+    end_date: str, # Passed from request, might be useful for context/logging
     historical_data: pd.DataFrame, # Or List[KLine]
     initial_capital: float
 ) -> BacktestResult:
@@ -19,14 +27,19 @@ def run_backtest(
     Runs a backtest simulation for a given bot configuration and historical data.
 
     Args:
-        bot_config: The configuration of the bot to backtest.
+        symbol: The trading symbol (e.g., 'BTCUSDT').
+        bot_type: The type of the bot ('Momentum', 'Grid', 'DCA').
+        name: The name of the bot configuration.
+        settings: Dictionary containing bot-specific parameters.
+        interval: The time interval of the klines (e.g., '1h', '1d').
+        start_date: Backtest start date string ("YYYY-MM-DD").
+        end_date: Backtest end date string ("YYYY-MM-DD").
         historical_data: DataFrame or list of KLine data for the backtest period.
         initial_capital: The starting capital for the simulation.
-
     Returns:
         A BacktestResult object containing performance metrics and simulated trades.
     """
-    print(f"Running backtest for bot: {bot_config.name} ({bot_config.bot_type})")
+    print(f"Running backtest for bot: {name} ({bot_type}) on {symbol} ({interval})")
     print(f"Initial capital: {initial_capital}")
     print(f"Historical data points: {len(historical_data)}")
 
@@ -53,13 +66,13 @@ def run_backtest(
 
 
     # 2. Initialize bot-specific parameters or state if needed
-    bot_params = bot_config.parameters
+    bot_params = settings # Use the passed settings dictionary directly
     # --- Bot-Specific Initialization ---
     grid_levels = []
     grid_states = {} # {level_price: 'empty'/'bought'}
     last_buy_timestamp = -1 # For DCA
 
-    if bot_config.bot_type == "Grid":
+    if bot_type == "Grid":
         lower = bot_params['lower_bound']
         upper = bot_params['upper_bound']
         n_grids = bot_params['num_grids']
@@ -71,7 +84,7 @@ def run_backtest(
         else:
             print("Warning: num_grids <= 1, GridBot simulation might not work as expected.")
 
-    elif bot_config.bot_type == "DCA":
+    elif bot_type == "DCA":
         # Initialize last_buy_timestamp to allow immediate buy if condition met on first kline
         if not historical_data.empty:
              # Start potentially buying from the first kline
@@ -84,10 +97,12 @@ def run_backtest(
         current_price = kline['close']
         current_timestamp = kline['timestamp']
         # Ensure we have enough data for indicators
-        if index < bot_params.get('ema_long_period', 26) and bot_config.bot_type == "Momentum": # Min lookback needed
+        if index < bot_params.get('ema_long_period', 26) and bot_type == "Momentum": # Min lookback needed
              # Update equity curve even if skipping trade logic
             current_equity = balance + (position_quantity * current_price)
             equity_curve.append({'timestamp': current_timestamp, 'equity': current_equity})
+            if bot_type == "Grid": # Update last price for grid even if skipping
+                last_price = current_price
             if bot_config.bot_type == "Grid": # Update last price for grid even if skipping
                 last_price = current_price
             continue # Skip until enough data
@@ -99,7 +114,7 @@ def run_backtest(
         trade_quantity = 0.0 # Quantity for this potential trade
         order_cost = 0.0 # Cost for BUY, proceeds for SELL
 
-        if bot_config.bot_type == "Momentum":
+        if bot_type == "Momentum":
             # --- Momentum Bot Simulation ---
             try:
                 # a. Calculate indicators
@@ -149,7 +164,7 @@ def run_backtest(
                 # Optionally skip this kline or handle error differently
                 pass
 
-        elif bot_config.bot_type == "Grid":
+        elif bot_type == "Grid":
             # --- Grid Bot Simulation ---
             order_qty_per_grid = bot_params.get('order_quantity', 0)
             if order_qty_per_grid > 0 and grid_levels:
@@ -181,7 +196,7 @@ def run_backtest(
 
             last_price = current_price # Update last price for next iteration
 
-        elif bot_config.bot_type == "DCA":
+        elif bot_type == "DCA":
             # --- DCA Bot Simulation ---
             interval_ms = bot_params['buy_interval_seconds'] * 1000
             order_amount = bot_params['order_amount_quote']

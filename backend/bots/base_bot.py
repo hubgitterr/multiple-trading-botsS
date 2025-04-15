@@ -163,7 +163,13 @@ class BaseBot(ABC):
             logger.info(f"Bot {self.bot_id}: Order placement result: {order_result}")
             # Example state update:
             # self.state['last_order_id'] = order_result.get('orderId')
-            self.log_trade(order_result) # Persist trade to DB
+            # --- FIX START ---
+            # Check if a valid orderId was returned before logging
+            if order_result and order_result.get('orderId'):
+                self.log_trade(order_result) # Persist trade to DB only if orderId exists
+            else:
+                logger.warning(f"Bot {self.bot_id}: Order placement did not return a valid orderId. Skipping trade log. Result: {order_result}")
+            # --- FIX END ---
             return order_result
         except Exception as e:
             logger.exception(f"Bot {self.bot_id}: Error placing order: {e}")
@@ -190,7 +196,7 @@ class BaseBot(ABC):
             # Ensure defaults are provided for potentially missing fields or handle None appropriately
             trade_payload = {
                 'symbol': order_details.get('symbol'),
-                'order_id': str(order_details.get('orderId', f'sim_{int(time.time())}')), # Ensure string
+                'orderId': str(order_details.get('orderId', f'sim_{int(time.time())}')), # Use matching key 'orderId'
                 'client_order_id': order_details.get('clientOrderId'),
                 'side': order_details.get('side', 'UNKNOWN'), # Provide default
                 'order_type': order_details.get('type', 'UNKNOWN'), # Provide default

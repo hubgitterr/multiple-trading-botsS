@@ -105,6 +105,37 @@ export default function BotControlPanel({ onEditClick, onBacktestClick }) { // A
     }
   };
 
+  const handleDeleteBot = async (botId) => {
+    // 1. Confirmation Dialog
+    if (!window.confirm(`Are you sure you want to delete bot ${botId}? This action cannot be undone.`)) {
+      return; // Abort if user cancels
+    }
+
+    setLoadingStates(prev => ({ ...prev, [botId]: true }));
+    setActionError(null);
+    console.log(`Attempting to delete bot: ${botId}`);
+    try {
+      // 2. API Call
+      await axiosInstance.delete(`/bots/${botId}`);
+      console.log(`Successfully requested deletion for bot ${botId}`);
+
+      // 3. UI Update (Trigger SWR revalidation)
+      // Revalidate configs first, as this drives the list
+      await mutate('/bots/configs');
+      // Revalidate status as well for consistency, though configs are primary
+      mutate('/bots/status');
+
+    } catch (err) {
+      // 4. Error Handling
+      console.error(`Error deleting bot ${botId}:`, err);
+      const errorMessage = err.response?.data?.detail || `Failed to delete bot ${botId}.`;
+      setActionError(errorMessage);
+    } finally {
+      // Reset loading state regardless of success or failure
+      setLoadingStates(prev => ({ ...prev, [botId]: false }));
+    }
+  };
+
   // Determine display status based on combined data
   const getDisplayStatus = (botData) => {
      if (!botData) return { text: 'Unknown', color: 'text-gray-500 dark:text-gray-400', dot: 'bg-gray-400' };
@@ -225,7 +256,17 @@ export default function BotControlPanel({ onEditClick, onBacktestClick }) { // A
                        {isLoadingAction ? 'Starting...' : 'Start'}
                     </button>
                   )}
-                   {/* TODO: Add Delete button */}
+                  {/* Delete Button */}
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteBot(botData.id)}
+                    disabled={isLoadingAction || botData.is_running} // Disable if loading or if bot is running
+                    title={botData.is_running ? "Stop the bot before deleting" : "Delete Bot"}
+                    className={`inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-md shadow-sm text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 disabled:opacity-50 ${botData.is_running ? 'cursor-not-allowed' : ''}`}
+                  >
+                    {isLoadingAction ? '...' : 'Delete'}
+                    {/* Show generic loading indicator if any action is happening */}
+                  </button>
                 </div>
               </li>
             );

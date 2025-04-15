@@ -99,7 +99,7 @@ class DCABot(BaseBot):
             self.state['total_invested'] = self.state.get('total_invested', 0.0) + filled_quote_amount
             self.state['total_base_acquired'] = self.state.get('total_base_acquired', 0.0) + filled_qty
             logger.info(f"DCA Purchase successful: Bought {filled_qty:.8f} {self.symbol} for ~{filled_quote_amount:.2f} {self.config.get('quote_currency', 'USDT')}")
-            self.log_trade({"type": "DCA_REGULAR", "amount_quote": amount, **order_result})
+            # Trade logging is handled within self.place_order now
             return True
         else:
             logger.error(f"DCABot {self.bot_id}: Failed to execute DCA purchase. Result: {order_result}")

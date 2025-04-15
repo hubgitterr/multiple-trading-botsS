@@ -1,5 +1,8 @@
+import logging
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from backend.utils.binance_client import BinanceAPIClient # Import the client
 # Placeholder for future authentication dependency
 # from .dependencies import get_current_user
 from .market import routes as market_routes
@@ -9,7 +12,29 @@ from .bots import routes as bot_routes
 from .backtest import routes as backtest_routes # Added backtest routes
 from .error_handlers import register_error_handlers
 
-app = FastAPI(title="Trading Bot API", version="0.1.0")
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup: Initialize Binance Client and store in app state
+    logging.info("Application startup: Initializing Binance client...")
+    binance_client = BinanceAPIClient()
+    try:
+        await binance_client.initialize()
+        app.state.binance_client = binance_client
+        logging.info("Binance client initialized successfully.")
+    except Exception as e:
+        logging.error(f"Failed to initialize Binance client during startup: {e}", exc_info=True)
+        app.state.binance_client = None # Ensure state reflects failure
+    yield
+    # Shutdown: Close Binance Client
+    logging.info("Application shutdown: Closing Binance client...")
+    if app.state.binance_client:
+        await app.state.binance_client.close_connection()
+        logging.info("Binance client closed.")
+
+app = FastAPI(title="Trading Bot API", version="0.1.0", lifespan=lifespan) # Add lifespan manager
 
 # Register custom error handlers
 register_error_handlers(app)

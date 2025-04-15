@@ -5,6 +5,7 @@ import React, { useState, useEffect } from 'react';
 export default function BacktestModal({ isOpen, onClose, onSubmit, configId }) {
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
+  const [interval, setInterval] = useState('1d'); // Default interval
   const [initialCapital, setInitialCapital] = useState(10000); // Default value
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -20,6 +21,7 @@ export default function BacktestModal({ isOpen, onClose, onSubmit, configId }) {
       setStartDate(oneYearAgoStr); // Default start date: 1 year ago
       setEndDate(today); // Default end date: today
       setInitialCapital(10000);
+      setInterval('1d'); // Reset interval to default
       setError('');
       setIsSubmitting(false);
     }
@@ -27,7 +29,7 @@ export default function BacktestModal({ isOpen, onClose, onSubmit, configId }) {
 
   const validateForm = () => {
     if (!startDate || !endDate || !initialCapital) {
-      setError('All fields are required.');
+      setError('Start date, end date, and initial capital are required.');
       return false;
     }
     if (new Date(endDate) <= new Date(startDate)) {
@@ -54,6 +56,7 @@ export default function BacktestModal({ isOpen, onClose, onSubmit, configId }) {
       await onSubmit({
         start_date: startDate,
         end_date: endDate,
+        interval: interval,
         initial_capital: Number(initialCapital),
       });
       // onSubmit should handle closing the modal on success if desired
@@ -132,6 +135,28 @@ export default function BacktestModal({ isOpen, onClose, onSubmit, configId }) {
                         required
                         disabled={isSubmitting}
                       />
+                    </div>
+
+                    {/* Interval */}
+                    <div>
+                      <label htmlFor="interval" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                        Interval
+                      </label>
+                      <select
+                        id="interval"
+                        value={interval}
+                        onChange={(e) => setInterval(e.target.value)}
+                        className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 dark:border-gray-600 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md dark:bg-gray-700 dark:text-white"
+                        required
+                        disabled={isSubmitting}
+                      >
+                        <option value="1m">1 Minute</option>
+                        <option value="5m">5 Minutes</option>
+                        <option value="15m">15 Minutes</option>
+                        <option value="1h">1 Hour</option>
+                        <option value="4h">4 Hours</option>
+                        <option value="1d">1 Day</option>
+                      </select>
                     </div>
 
                     {/* Initial Capital */}

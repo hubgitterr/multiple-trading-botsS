@@ -6,6 +6,7 @@ from datetime import datetime
 import logging
 
 from backend.models.trade import Trade # Import the model
+from backend.db.session import SessionLocal # Import SessionLocal if needed elsewhere or for consistency
 # Import schemas later if needed
 
 logger = logging.getLogger(__name__)
@@ -13,23 +14,27 @@ logger = logging.getLogger(__name__)
 def create_trade(db: Session, user_id: str, bot_config_id: UUID, trade_data: Dict[str, Any]) -> Trade:
     """Creates a new trade record in the database."""
     # **IMPORTANT**: Ensure trade_data is validated and contains necessary fields
-    logger.info(f"Recording trade for user={user_id}, bot_config={bot_config_id}, order_id={trade_data.get('orderId')}")
-    
+    retrieved_order_id = trade_data.get('orderId') # Explicitly get the value
+    # Removed diagnostic log line
+
     # Extract data, converting types as needed
     # Assumes trade_data comes directly from parsed Binance order response
-    
+
     # Get values safely, handling potential None
     price_val = trade_data.get("price")
-    quantity_val = trade_data.get("executedQty")
-    quote_quantity_val = trade_data.get("cummulativeQuoteQty")
+    quantity_val = trade_data.get("executedQty") # Use executedQty as per base_bot
+    quote_quantity_val = trade_data.get("cummulativeQuoteQty") # Use cummulativeQuoteQty as per base_bot
     commission_val = trade_data.get("commission") # May be None if not in fills
     transact_time_val = trade_data.get("transactTime")
+
+    # Process order_id before passing to the model
+    order_id_for_db = str(retrieved_order_id) if retrieved_order_id is not None else None # Convert to string OR keep None if it was None
 
     db_trade = Trade(
         user_id=user_id,
         bot_config_id=bot_config_id,
         symbol=trade_data.get("symbol"),
-        order_id=str(trade_data.get("orderId")), # Ensure string
+        order_id=order_id_for_db, # Use the processed value
         client_order_id=trade_data.get("clientOrderId"),
         side=trade_data.get("side"),
         order_type=trade_data.get("type", "UNKNOWN"), # Add default 'UNKNOWN'
@@ -41,8 +46,8 @@ def create_trade(db: Session, user_id: str, bot_config_id: UUID, trade_data: Dic
         timestamp=datetime.fromtimestamp(int(transact_time_val) / 1000) if transact_time_val else datetime.now() # Use variable and ensure int
         # pnl=trade_data.get("pnl") # If calculated elsewhere
     )
-    
-    # Refinement needed: Parse 'fills' array from Binance order response 
+
+    # Refinement needed: Parse 'fills' array from Binance order response
     # to get accurate average price, total commission, and commission asset.
     # Example (conceptual):
     # if 'fills' in trade_data and trade_data['fills']:
@@ -61,28 +66,30 @@ def create_trade(db: Session, user_id: str, bot_config_id: UUID, trade_data: Dic
     return db_trade
 
 def get_trades_by_user(
-    db: Session, 
-    user_id: str, 
+    db: Session,
+    user_id: str,
     bot_config_id: Optional[UUID] = None,
     symbol: Optional[str] = None,
     start_time: Optional[datetime] = None,
     end_time: Optional[datetime] = None,
-    skip: int = 0, 
+    skip: int = 0,
     limit: int = 100
 ) -> List[Trade]:
-    """Gets trade records for a user, with optional filters."""
-    logger.debug(f"Fetching trades for user_id={user_id}, bot_config_id={bot_config_id}, symbol={symbol}")
+    """Retrieves trades for a user, optionally filtered."""
     query = db.query(Trade).filter(Trade.user_id == user_id)
-    
     if bot_config_id:
         query = query.filter(Trade.bot_config_id == bot_config_id)
     if symbol:
-        query = query.filter(Trade.symbol == symbol.upper())
+        query = query.filter(Trade.symbol == symbol)
     if start_time:
         query = query.filter(Trade.timestamp >= start_time)
     if end_time:
         query = query.filter(Trade.timestamp <= end_time)
-        
+
     return query.order_by(Trade.timestamp.desc()).offset(skip).limit(limit).all()
+
+def get_trade_by_order_id(db: Session, order_id: str) -> Optional[Trade]:
+    """Retrieves a specific trade by its exchange order ID."""
+    return db.query(Trade).filter(Trade.order_id == order_id).first()
 
 # Add other query functions if needed (e.g., get_trade_by_order_id)

@@ -55,6 +55,18 @@ class BotStatus(BaseModel):
     runtime_state: Dict[str, Any]
 
 # --- Helper Functions ---
+import math # Add math import for isnan
+
+def _replace_nan_with_none(obj: Any) -> Any:
+    """Recursively replace float('nan') with None in dicts and lists."""
+    if isinstance(obj, dict):
+        return {k: _replace_nan_with_none(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [_replace_nan_with_none(elem) for elem in obj]
+    elif isinstance(obj, float) and math.isnan(obj):
+        return None
+    else:
+        return obj
 
 def get_bot_instance(bot_id: str) -> Optional[BaseBot]:
     """Retrieve a running bot instance by ID."""
@@ -249,7 +261,46 @@ async def delete_bot_configuration(
     return None # No content response (HTTP 204)
 
 
-# Bot Lifecycle Management
+# --- Bot Deletion (Mirrors /configs/{config_id} delete for clarity) ---
+
+@router.delete("/{bot_id}", summary="Delete Bot (Stops and Deletes Config)", status_code=204)
+async def delete_bot(
+    bot_id: UUID = Path(..., description="The ID of the bot (configuration) to delete"), # Use UUID type
+    db: Session = Depends(get_db), # Inject DB session
+    current_user: UserPayload = Depends(get_current_user) # Added auth dependency
+):
+    """
+    Deletes a bot by stopping its running instance (if any)
+    and removing its configuration from the database.
+    Requires authentication and ownership.
+    """
+    user_id = current_user.sub # Use actual user ID from auth
+    logger.info(f"User {user_id} deleting bot: {bot_id}")
+
+    # Stop the bot if it's running using this config ID (which is the bot_id)
+    running_bot = get_bot_instance(str(bot_id)) # get_bot_instance expects str
+    if running_bot:
+        # Ensure the user stopping the bot owns it
+        if running_bot.user_id != user_id:
+             raise HTTPException(status_code=403, detail="Access denied to stop this bot.")
+        logger.info(f"Stopping running bot {bot_id} before deleting configuration.")
+        await running_bot.stop()
+        if str(bot_id) in running_bots:
+             del running_bots[str(bot_id)] # Remove from running list
+
+    # Call CRUD function to delete the config, ensuring user owns it
+    deleted_config = crud_bot_config.delete_bot_config(db=db, config_id=bot_id, user_id=user_id)
+    
+    if not deleted_config:
+         # If the config wasn't found, it might have been deleted already, or never existed.
+         # Check if a bot instance was running (and stopped above) - if so, maybe it was an orphan?
+         # For simplicity, we return 404 if the DB delete failed (config not found for user).
+         raise HTTPException(status_code=404, detail="Bot configuration not found or delete failed")
+
+    return None # No content response (HTTP 204)
+
+
+# --- Bot Lifecycle Management ---
 
 @router.post("/{bot_id}/start", summary="Start a Bot Instance")
 async def start_bot( # Removed client dependency, added db
@@ -315,7 +366,10 @@ async def stop_bot(
     if bot_id in running_bots: # Remove from in-memory store after stopping
          del running_bots[bot_id]
 
-    return {"message": f"Bot {bot_id} stopped successfully.", "status": bot_instance.get_status()}
+    # Get status and sanitize it before returning
+    raw_status = bot_instance.get_status()
+    sanitized_status = _replace_nan_with_none(raw_status)
+    return {"message": f"Bot {bot_id} stopped successfully.", "status": sanitized_status}
 
 
 @router.get("/status", summary="Get Status of All Running Bots", response_model=List[BotStatus])
