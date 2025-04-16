@@ -42,7 +42,7 @@ export default function BacktestResultsDisplay({ results }) {
       { key: 'win_rate_pct', label: 'Win Rate (%)', format: { style: 'percent', minimumFractionDigits: 2 } },
       { key: 'profit_factor', label: 'Profit Factor', format: { minimumFractionDigits: 2 } },
       { key: 'max_drawdown_pct', label: 'Max Drawdown (%)', format: { style: 'percent', minimumFractionDigits: 2 } },
-      { key: 'sharpe_ratio', label: 'Sharpe Ratio', format: { minimumFractionDigits: 3 } },
+      { key: 'sharpe_ratio', label: 'Sharpe Ratio', format: { minimumFractionDigits: 2 } },
       { key: 'total_trades', label: 'Total Trades', format: {} },
       { key: 'avg_trade_pnl', label: 'Avg Trade PnL ($)', format: { style: 'currency', currency: 'USD' } }, // Example additional metric
       { key: 'total_profit', label: 'Total Profit ($)', format: { style: 'currency', currency: 'USD' } },

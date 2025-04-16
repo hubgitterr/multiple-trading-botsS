@@ -11,6 +11,8 @@ from .user import routes as user_routes
 from .bots import routes as bot_routes
 from .backtest import routes as backtest_routes # Added backtest routes
 from .error_handlers import register_error_handlers
+from backend.db.session import engine, Base # Import engine and Base
+from backend import models # Import models to register them with Base
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -24,8 +26,19 @@ async def lifespan(app: FastAPI):
         await binance_client.initialize()
         app.state.binance_client = binance_client
         logging.info("Binance client initialized successfully.")
+
+        # Create database tables
+        logging.info("Creating database tables if they don't exist...")
+        try:
+            Base.metadata.create_all(bind=engine)
+            logging.info("Database tables checked/created successfully.")
+        except Exception as db_e:
+            logging.error(f"Failed to create database tables during startup: {db_e}", exc_info=True)
+            # Depending on the application's needs, you might want to raise the exception
+            # or handle it differently if the DB is critical for startup.
+
     except Exception as e:
-        logging.error(f"Failed to initialize Binance client during startup: {e}", exc_info=True)
+        logging.error(f"Failed to initialize Binance client or DB tables during startup: {e}", exc_info=True)
         app.state.binance_client = None # Ensure state reflects failure
     yield
     # Shutdown: Close Binance Client

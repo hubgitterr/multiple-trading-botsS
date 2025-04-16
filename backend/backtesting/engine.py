@@ -9,7 +9,7 @@ from pydantic import BaseModel
 import math # Added for checking NaN
 
 # Schemas (KLine, Trade, BacktestResult) are now defined in backend.schemas.backtest
-from backend.schemas.backtest import KLine, Trade, BacktestResult
+from backend.schemas.backtest import KLine, Trade, BacktestResult, BacktestOutput
 
 # Update function signature to accept individual parameters
 def run_backtest(
@@ -22,7 +22,8 @@ def run_backtest(
     end_date: str, # Passed from request, might be useful for context/logging
     historical_data: pd.DataFrame, # Or List[KLine]
     initial_capital: float
-) -> BacktestResult:
+) -> BacktestOutput:
+    print("--- DEBUG: Entering run_backtest function ---")
     """
     Runs a backtest simulation for a given bot configuration and historical data.
 
@@ -62,7 +63,15 @@ def run_backtest(
         last_price = historical_data.iloc[0]['close']
     else:
         # Handle case with no historical data
-        return BacktestResult(metrics=calculate_metrics([], [], initial_capital), trades=[], equity_curve=[])
+        return BacktestOutput(
+            start_date=start_date,  # Add start_date
+            end_date=end_date,      # Add end_date
+            interval=interval,        # Add interval
+            initial_capital=initial_capital, # Add initial_capital
+            metrics=calculate_metrics([], [], initial_capital),
+            trades=[],
+            equity_curve=[]
+        )
 
 
     # 2. Initialize bot-specific parameters or state if needed
@@ -313,11 +322,25 @@ def run_backtest(
     # (e.g., differentiate BUY/SELL entries vs. PnL records)
     # For now, pass all trades.
     metrics = calculate_metrics(trades, equity_curve, initial_capital)
+    # Debug logging to inspect data
+    print("--- DEBUG: Inspecting run_backtest data ---")
+    print(f"start_date: {start_date} (Type: {type(start_date)})")
+    print(f"end_date: {end_date} (Type: {type(end_date)})")
+    print(f"interval: {interval} (Type: {type(interval)})")
+    print(f"initial_capital: {initial_capital} (Type: {type(initial_capital)})")
+    print("--- End DEBUG Inspecting run_backtest data ---")
 
-    # 5. Return results
-    print("Backtest complete.")
-    return BacktestResult(metrics=metrics, trades=trades, equity_curve=equity_curve)
+    # Create the BacktestOutput object, including all required fields
+    backtest_result = BacktestOutput(
+        start_date=start_date,  # Pass start_date
+        end_date=end_date,      # Pass end_date
+        interval=interval,        # Pass interval
+        initial_capital=initial_capital, # Pass initial_capital
+        metrics=metrics,
+        trades=trades,
+        equity_curve=equity_curve
+    )
 
-
+    return backtest_result
 # --- Helper functions (e.g., for indicator calculation) can be added here ---
 # Indicator calculations are now inline using pandas_ta

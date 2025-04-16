@@ -99,7 +99,7 @@ def calculate_metrics(
     if not equity_curve_data:
         return {
             "total_trades": 0,
-            "total_pnl": {"absolute_pnl": 0.0, "percentage_pnl": 0.0},
+            "total_profit": {"absolute_pnl": 0.0, "percentage_pnl": 0.0},
             "win_rate_percentage": 0.0,
             "profit_factor": 0.0,
             "max_drawdown": {"absolute_max_drawdown": 0.0, "percentage_max_drawdown": 0.0},
@@ -120,9 +120,11 @@ def calculate_metrics(
 
     return {
         "total_trades": len(trades),
-        "total_pnl": total_pnl,
-        "win_rate_percentage": win_rate,
+        "total_profit": total_pnl['absolute_pnl'],
+        "total_profit_pct": total_pnl['percentage_pnl'],
+        "win_rate": win_rate,
         "profit_factor": profit_factor,
-        "max_drawdown": max_drawdown,
+        "max_drawdown": max_drawdown['absolute_max_drawdown'],
+        "max_drawdown_pct": max_drawdown['percentage_max_drawdown'],
         "sharpe_ratio": sharpe,
     }
